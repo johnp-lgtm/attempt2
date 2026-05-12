@@ -2139,7 +2139,7 @@
                     <div class="progress-fill" id="progressFill" style="width: 12.5%"></div>
                 </div>
                 <div class="progress-text">
-                    <span id="stepIndicator">Step 1 of 8</span>
+                    <span id="stepIndicator">Step 1 of 7</span>
                     <span id="stepTime">~60 seconds</span>
                 </div>
             </div>
@@ -2444,8 +2444,8 @@
             <!-- Step 5: Credit & Residency -->
             <div class="form-step" data-step="5">
                 <div class="step-icon">📊</div>
-                <h2 class="step-title">No Judgement Here</h2>
-                <p class="step-subtitle">Be honest — we've helped thousands of Aussies with all kinds of credit histories. The more we know, the better we can help.</p>
+                <h2 class="step-title">A Quick Check on Your Situation</h2>
+                <p class="step-subtitle">Credit history and residency help us match you to the right lender. The more we know, the more accurately we can find your best rate.</p>
                 
                 <div class="credit-options">
                     <div class="credit-option" data-value="excellent" data-field="creditHistory">
@@ -2629,7 +2629,7 @@
                     </div>
                     <h2 class="success-title">You're All Set!</h2>
                     <p class="success-message">Thanks for choosing Easy As Loans. One of our friendly brokers will be in touch shortly to discuss your options and find you the best deal.</p>
-                    
+
                     <div class="success-next">
                         <h4>What Happens Next?</h4>
                         <ul>
@@ -2638,6 +2638,17 @@
                             <li><span>3.</span> Once approved, you'll be ready to hit the road!</li>
                         </ul>
                     </div>
+                </div>
+            </div>
+
+            <!-- Decline Screen (early knockout) -->
+            <div class="form-step" data-step="decline">
+                <div class="success-screen">
+                    <div class="success-icon" style="background: #f3f3f3;">
+                        <span style="font-size: 40px;">🙏</span>
+                    </div>
+                    <h2 class="success-title">Thanks for Your Interest</h2>
+                    <p class="success-message" id="declineMessage">Based on what you've told us, we're not the right fit for your finance needs right now. We appreciate you taking the time and wish you all the best.</p>
                 </div>
             </div>
         </div>
@@ -2671,9 +2682,9 @@
         // Dynamic flow based on selections
         // Flow definitions
         const flows = {
-            'car-personal': ['1', '2', '4', 'timeline', '6', '8'],                                     // Car Loan + Personal — streamlined
-            'car-business': ['1', '2', 'abn', '4', 'timeline', '6', '8'],                              // Car Loan + Business (adds ABN step)
-            'personal-loan': ['1', '4', 'timeline', '6', '8']                                          // Personal Loan
+            'car-personal': ['1', '2', '4', 'timeline', '5', '6', '8'],                                // Car Loan + Personal
+            'car-business': ['1', '2', 'abn', '4', 'timeline', '5', '6', '8'],                         // Car Loan + Business (adds ABN step)
+            'personal-loan': ['1', '4', 'timeline', '5', '6', '8']                                     // Personal Loan
         };
 
         let currentFlowKey = 'car-personal'; // Default flow
@@ -2723,6 +2734,7 @@
             btn.addEventListener('click', () => {
                 formOverlay.classList.add('active');
                 document.body.style.overflow = 'hidden';
+                updateProgress();
             });
         });
 
@@ -2982,18 +2994,62 @@
             });
         });
 
+        // Early-decline gate. Returns a decline reason string if knockout fires, else null.
+        function checkKnockout(stepId) {
+            if (stepId === '5') {
+                if (formData.residencyStatus === 'student-visa' || formData.residencyStatus === 'other-visa') {
+                    return 'residency';
+                }
+            }
+            if (stepId === '6') {
+                if (formData.employmentStatus === 'pension') {
+                    return 'employment';
+                }
+                // Annualised income check (income is after-tax — same threshold the broker uses)
+                const amount = parseFloat(String(formData.incomeAmount).replace(/[^\d.]/g, '')) || 0;
+                const freq = formData.incomeFrequency || 'fortnightly';
+                const multiplier = freq === 'weekly' ? 52 : freq === 'monthly' ? 12 : 26;
+                const annualised = amount * multiplier;
+                if (amount > 0 && annualised < 30000) {
+                    return 'income';
+                }
+            }
+            return null;
+        }
+
+        function triggerDecline(reason) {
+            formData.declineReason = reason;
+            const messages = {
+                residency: "Unfortunately, our lender panel can't help with student visa or other visa applications. We appreciate you reaching out and wish you all the best.",
+                employment: "Unfortunately we're not able to help with pension or benefit-based applications. We appreciate you reaching out and wish you all the best.",
+                income: "Based on the income you've entered, we're not the right fit at this stage. We appreciate you taking the time and wish you all the best."
+            };
+            const msgEl = document.getElementById('declineMessage');
+            if (msgEl && messages[reason]) msgEl.textContent = messages[reason];
+            showStep('decline');
+            // Hide the progress + close form actions — this is a terminal state
+            document.querySelector('.form-progress')?.style.setProperty('display', 'none');
+        }
+
         // Navigation - Next buttons
         document.querySelectorAll('.btn-next').forEach(btn => {
             btn.addEventListener('click', async () => {
                 const currentStepId = getCurrentStepId();
-                
+
+                // Early decline gates (student/other visa, pension, income < $30k annualised)
+                const knockout = checkKnockout(currentStepId);
+                if (knockout) {
+                    triggerDecline(knockout);
+                    return;
+                }
+
                 // After step 1 (loan type), determine the flow
                 if (currentStepId === '1') {
                     currentFlowKey = determineFlow();
                     currentFlow = flows[currentFlowKey];
                     currentStepIndex = 0; // We're at step 1
                 }
-                
+
                 // After step 2 (purpose), we may need to switch between car-personal and car-business
                 if (currentStepId === '2') {
                     currentFlowKey = determineFlow();
@@ -3001,7 +3057,7 @@
                     // Find where we are in the new flow
                     currentStepIndex = currentFlow.indexOf('2');
                 }
-                
+
                 // Check if we're at the last step
                 if (currentStepIndex < currentFlow.length - 1) {
                     sendStepUpdate(); // Send partial data to Google Sheets
