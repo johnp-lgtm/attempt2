@@ -19,12 +19,10 @@
     t.src=v;s=b.getElementsByTagName(e)[0];
     s.parentNode.insertBefore(t,s)}(window, document,'script',
     'https://connect.facebook.net/en_US/fbevents.js');
-    fbq('init', '1567503884314193');
-    fbq('track', 'PageView');
+    fbq('init', '2053787295547115');
+    // PageView intentionally NOT fired on this domain — top-of-funnel is tracked on the advertorial.
+    // Pixel still initialised so Lead / advanced matching can fire on form submit.
     </script>
-    <noscript><img height="1" width="1" style="display:none"
-    src="https://www.facebook.com/tr?id=1567503884314193&ev=PageView&noscript=1"
-    /></noscript>
     <!-- End Meta Pixel Code -->
     <!-- Microsoft Clarity -->
     <script type="text/javascript">
@@ -3069,23 +3067,16 @@
                     btn.innerHTML = 'Submitting...';
                     
                     try {
-                        // Shared event_ids let Meta dedupe browser Pixel events
-                        // against the server-side CAPI events fired by Apps Script.
+                        // Shared event_id lets Meta dedupe browser Pixel events
+                        // against the server-side CAPI event fired by Apps Script.
                         const leadEventId = 'lead_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
-                        const qualifiedEventId = 'qlead_' + Date.now().toString(36) + '_' + Math.random().toString(36).substr(2, 9);
                         const leadValue = scoreLead(formData);
-                        const annualIncomeAU = computeAnnualIncome(formData.incomeAmount, formData.incomeFrequency);
-                        const urgentTimeline = ['asap', 'this-week', 'this-month'].includes((formData.timeline || '').toLowerCase());
-                        const incomeOK = annualIncomeAU >= 40000;
-                        const employmentOK = leadValue >= 150;
-                        // Hot lead: stable employment + ready to buy + earns enough to qualify with prime lenders
-                        const isQualified = employmentOK && urgentTimeline && incomeOK;
 
-                        await submitToGoogleSheets(leadEventId, qualifiedEventId, leadValue, isQualified);
+                        await submitToGoogleSheets(leadEventId, leadValue);
 
                         if (typeof fbq !== 'undefined') {
                             // Re-init Pixel with Advanced Matching to lift Event Match Quality
-                            fbq('init', '1567503884314193', buildAdvancedMatching());
+                            fbq('init', '2053787295547115', buildAdvancedMatching());
 
                             fbq('track', 'Lead', {
                                 content_name: formData.loanType || 'car-loan',
@@ -3094,16 +3085,6 @@
                                 currency: 'AUD',
                                 employment_status: formData.employmentStatus || ''
                             }, { eventID: leadEventId });
-
-                            if (isQualified) {
-                                fbq('trackCustom', 'QualifiedLead', {
-                                    content_name: formData.loanType || 'car-loan',
-                                    content_category: 'Finance',
-                                    value: leadValue,
-                                    currency: 'AUD',
-                                    employment_status: formData.employmentStatus || ''
-                                }, { eventID: qualifiedEventId });
-                            }
                         }
                         clearProgress();
                         showStep('success');
@@ -3149,18 +3130,6 @@
             }
         }
 
-        // Convert income amount + frequency to a rough annual figure (AUD).
-        // Used to gate QualifiedLead — only fires for incomes above a minimum threshold.
-        function computeAnnualIncome(amount, frequency) {
-            const n = parseFloat(String(amount || '').replace(/[^0-9.]/g, '')) || 0;
-            switch ((frequency || '').toLowerCase()) {
-                case 'weekly': return n * 52;
-                case 'fortnightly': return n * 26;
-                case 'monthly': return n * 12;
-                default: return n * 26; // assume fortnightly if unknown
-            }
-        }
-
         function sendToGoogleSheets(isFinal, opts) {
             // Generate a stable leadId on first send
             if (!leadId) {
@@ -3173,9 +3142,7 @@
                 leadId: leadId,
                 isFinal: !!isFinal,
                 leadEventId: opts.leadEventId || null,
-                qualifiedEventId: opts.qualifiedEventId || null,
                 leadValue: opts.leadValue != null ? opts.leadValue : null,
-                isQualified: !!opts.isQualified,
                 eventSourceUrl: window.location.href,
                 userAgent: navigator.userAgent,
                 fbp: getCookie('_fbp'),
@@ -3215,8 +3182,8 @@
         }
 
         // Final submission — Apps Script handles Meta Conversions API server-side.
-        async function submitToGoogleSheets(leadEventId, qualifiedEventId, leadValue, isQualified) {
-            sendToGoogleSheets(true, { leadEventId, qualifiedEventId, leadValue, isQualified });
+        async function submitToGoogleSheets(leadEventId, leadValue) {
+            sendToGoogleSheets(true, { leadEventId, leadValue });
             await new Promise(resolve => setTimeout(resolve, 2000));
             return true;
         }
